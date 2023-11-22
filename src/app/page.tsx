@@ -1,39 +1,64 @@
 "use client"
 
-import {AircraftPositionProvider, useAircraftPosition} from "@mattj65817/flight-react";
-import {freeze} from "immer";
+import Axios from "axios";
+import {freeze, produce} from "immer";
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {TrackingProvider, isModeSCode, useTrackingPositions} from "@mattj65817/flight-react";
 
-const moreyModeSCodes = freeze<Lowercase<string>[]>([
-    "a3daa1",
-    "a5414a",
-    "a54501",
-    "a5de70",
-    "a60631",
-    "a6b340",
-    "a97172",
-    "aa3681",
-    "acfacb"
-]);
+import type {ChangeEvent} from "react";
+import type {ModeSCode, TrackingProviderProps} from "@mattj65817/flight-react";
 
-function Positions() {
-    const positions = useAircraftPosition();
+function Flights() {
+    const positions = useTrackingPositions();
     return (
-        <pre>
-            {JSON.stringify(positions, null, "  ")}
-        </pre>
+        <code>
+            {JSON.stringify(positions)}
+        </code>
     );
 }
 
 export default function Home() {
+    const [{id, tailNumber}, updateState] = useState<HomeState>(freeze({
+        tailNumber: "",
+        id: null
+    }));
+    const config = useMemo<TrackingProviderProps>(() => freeze({
+        config: {
+            kind: "adsbx",
+            axiosFactory: Axios.create,
+            baseURL: new URL("http://localhost:3000/api/adsbfi/")
+        },
+        ids: null == id ? [] : [id],
+        nonTrackingInterval: {minute: 2},
+        trackingInterval: {minute: 1}
+    }), [id]);
+
+    useEffect(() => {
+        console.log("config", config);
+    }, [config]);
+
+    const onChangeTailNumber = useCallback(({target: {value}}: ChangeEvent<HTMLInputElement>) => {
+        updateState(previous =>
+            produce(previous, draft => {
+                draft.tailNumber = value;
+                const lowercaseValue = value.toLowerCase();
+                if (isModeSCode(lowercaseValue)) {
+                    draft.id = lowercaseValue;
+                }
+            }));
+    }, [updateState]);
+
     return (
-        <AircraftPositionProvider modeSCodes={moreyModeSCodes} config={{
-            provider: "opensky",
-            auth: {
-                username: "mattj65816",
-                password: "C3kX$RpaB2D1"
-            }
-        }}>
-            <Positions/>
-        </AircraftPositionProvider>
+        <div>
+            <input type="text" value={tailNumber} onChange={onChangeTailNumber}/>
+            <TrackingProvider {...config}>
+                <Flights/>
+            </TrackingProvider>
+        </div>
     );
+}
+
+interface HomeState {
+    tailNumber: string;
+    id: null | ModeSCode;
 }
